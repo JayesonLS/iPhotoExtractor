@@ -54,6 +54,51 @@ namespace iPhotoAlbumDataParser
             };
         }
 
+        private static Rectangle ParseRectangle(XElement xmlElement)
+        {
+            if (xmlElement == null)
+            {
+                return null;
+            }
+            else
+            {
+                string stringified = xmlElement.Value;
+                string simplified = stringified.Replace('{', ' ').Replace('}', ' ');
+                string[] split = simplified.Split(',');
+
+                return new Rectangle
+                {
+                    RectangleX = double.Parse(split[0]),
+                    RectangleY = double.Parse(split[1]),
+                    RectangleW = double.Parse(split[2]),
+                    RectangleH = double.Parse(split[3]),
+                };
+            }
+        }
+
+        private static ImageFace CreateImageFace(XElement xmlElement)
+        {
+            return new ImageFace
+            {
+                FaceKey = XElementParser.ParseIntValue(xmlElement, "face key"),
+                FaceIndex = XElementParser.ParseNullableIntValue(xmlElement, "face index"),
+                Rectangle = ParseRectangle(XElementParser.GetElementForKey(xmlElement, "rectangle")),
+            };
+        }
+
+        private static List<ImageFace> ParseImageFaces(XElement xmlElement)
+        {
+            if (xmlElement == null)
+            {
+                return null;
+            }
+            else
+            {
+                List<ImageFace> result = xmlElement.Elements("dict").Where(d => d.Elements("key").Count() > 1).Select(d => CreateImageFace(d)).ToList();
+                return result.Count > 0 ? result : null;
+            }
+        }
+
         private static MasterImage CreateMasterImage(XElement xmlElement)
         {
             return new MasterImage
@@ -69,10 +114,33 @@ namespace iPhotoAlbumDataParser
                 DateAsTimerIntervalGMT = XElementParser.ParseNullableDoubleValue(xmlElement, "DateAsTimerIntervalGMT"),
                 MetaModDateAsTimerInterval = XElementParser.ParseNullableDoubleValue(xmlElement, "MetaModDateAsTimerInterval"),
                 Flagged = XElementParser.ParseBoolean(xmlElement, "Flagged"),
+                Latitude = XElementParser.ParseNullableDoubleValue(xmlElement, "latitude"),
+                Longitude = XElementParser.ParseNullableDoubleValue(xmlElement, "longitude"),
+                Faces = ParseImageFaces(XElementParser.GetElementForKey(xmlElement, "Faces")),
+
                 ImagePath = XElementParser.ParseStringValue(xmlElement, "ImagePath"),
                 ThumbPath = XElementParser.ParseStringValue(xmlElement, "ThumbPath"),
                 OriginalPath = XElementParser.ParseStringValue(xmlElement, "OriginalPath"),
             };
+        }
+
+        // Debug code to gather all of the different master image keys.
+        private void DumpMasterImageKeyNames(XElement rootDict)
+        {
+            HashSet<string> keys = new HashSet<string>();
+
+            foreach (XElement xmlElement in XElementParser.GetElementForKey(rootDict, "Master Image List").Elements("dict").Where(d => d.Elements("key").Count() > 1))
+            {
+                foreach (XElement keyElement in xmlElement.Elements("key"))
+                {
+                    keys.Add(keyElement.Value);
+                }
+            }
+
+            foreach (string key in keys)
+            {
+                Console.WriteLine("Master image key: " + key);
+            }
         }
 
         private void ParseXml(XDocument xmlDoc)
@@ -89,6 +157,8 @@ namespace iPhotoAlbumDataParser
             {
                 masterImage.MakePathsRelative(rootPath);
             }
+
+            // DumpMasterImageKeyNames(rootDict);
         }
 
         // Pass in path to iPhoto Library.photolibrary/AlbumData.xml

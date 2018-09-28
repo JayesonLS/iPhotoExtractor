@@ -19,6 +19,9 @@ namespace iPhotoAlbumDataParser
         public double? DateAsTimerIntervalGMT { get; set; }
         public double? MetaModDateAsTimerInterval { get; set; }
         public bool Flagged { get; set; }
+        public double? Latitude { get; set; }
+        public double? Longitude { get; set; }
+        public List<ImageFace> Faces { get; set; }
 
         public string ImagePath { get; set; }
         public string ThumbPath { get; set; }

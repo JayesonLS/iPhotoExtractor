@@ -43,6 +43,7 @@
   <ItemGroup>
     <Compile Include="Album.cs" />
     <Compile Include="AlbumData.cs" />
+    <Compile Include="ImageFace.cs" />
     <Compile Include="Face.cs" />
     <Compile Include="MasterImage.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />

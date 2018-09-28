@@ -48,15 +48,60 @@ namespace iPhotoExtractor
             return true;
         }
 
-        static string SanitizePathString(string pathString)
+        static string CleanEventName(string name)
+        {
+            name = name.Replace('/', '-');
+
+            foreach (char c in Path.GetInvalidFileNameChars())
+            {
+                name = name.Replace(c, '_');
+            }
+
+            return name;
+        }
+
+        static void MakeRollNamesUnique(AlbumData albumData)
+        {
+            HashSet<string> usedRollNames = new HashSet<string>();
+
+            foreach (Roll roll in albumData.Rolls.Values)
+            {
+                string baseName = roll.RollName;
+                if (String.IsNullOrEmpty(baseName))
+                {
+                    baseName = "unnamed event";
+                }
+
+                baseName = baseName.Replace('\\', '_');
+                baseName = CleanEventName(baseName);
+
+                string name = baseName;
+
+                for (int i = 1; usedRollNames.Contains(name); i++)
+                {
+                    name = baseName + " (" + i.ToString() + ")";
+                }
+
+                if (name != roll.RollName)
+                {
+                    Console.WriteLine("Modifed event name from '" + roll.RollName + "' to '" + name + "'.");
+                }
+
+                roll.RollName = name;
+            }
+        }
+
+        static string SanitizePathString(string pathString, bool allowSeparator)
         {
             foreach (char c in Path.GetInvalidFileNameChars())
             {
-                if (c != Path.DirectorySeparatorChar && c != Path.AltDirectorySeparatorChar)
+                if (allowSeparator && (c == Path.DirectorySeparatorChar || c == Path.AltDirectorySeparatorChar))
                 {
-                    string replacement = String.Format("%0:X2", (int)c);
-                    pathString = pathString.Replace(c.ToString(), replacement);
+                    continue;
                 }
+
+                string replacement = String.Format("%0:X2", (int)c);
+                pathString = pathString.Replace(c.ToString(), replacement);
             }
 
             return pathString;
@@ -67,8 +112,8 @@ namespace iPhotoExtractor
             string sourcePath = Path.Combine(sourceRootPath, sourceFilePath);
 
             string fileName = Path.GetFileName(sourceFilePath);
-            fileName = SanitizePathString(fileName);
-            destFolderPath = SanitizePathString(destFolderPath);
+            fileName = SanitizePathString(fileName, false);
+            destFolderPath = SanitizePathString(destFolderPath, true);
             string destPath = Path.Combine(destRootPath, destFolderPath, fileName);
 
             Console.WriteLine("Copying to '" + Path.Combine(destFolderPath, fileName) + "'.");
@@ -133,6 +178,8 @@ namespace iPhotoExtractor
 
                 bool preview = mode == "preview";
                 AlbumData albumData = AlbumData.Load(iPhotoXmlPath);
+
+                MakeRollNamesUnique(albumData);
 
                 foreach (MasterImage masterImage in albumData.MasterImages.Values)
                 {

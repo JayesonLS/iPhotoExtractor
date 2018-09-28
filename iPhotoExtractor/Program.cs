@@ -107,7 +107,7 @@ namespace iPhotoExtractor
             return pathString;
         }
 
-        static void CopyFile(string sourceRootPath, string sourceFilePath, string destRootPath, string destFolderPath, bool preview)
+        static string CopyFile(string sourceRootPath, string sourceFilePath, string destRootPath, string destFolderPath, bool preview)
         {
             string sourcePath = Path.Combine(sourceRootPath, sourceFilePath);
 
@@ -120,16 +120,25 @@ namespace iPhotoExtractor
 
             if (!preview)
             {
+                if (!File.Exists(sourcePath))
+                {
+                    Console.Error.WriteLine("Can't find source file '" + sourcePath + "', skipping.");
+                    return null;
+                }
+
                 Directory.CreateDirectory(Path.GetDirectoryName(destPath));
                 if (File.Exists(destPath))
                 {
-                    Console.WriteLine("WARNING: File already exists, skipping '" + Path.Combine(destFolderPath, fileName) + "'.");
+                    Console.WriteLine("WARNING: Destination file already exists, skipping '" + Path.Combine(destFolderPath, fileName) + "'.");
+                    return null;
                 }
                 else
                 {
                     File.Copy(sourcePath, destPath);
                 }
             }
+
+            return destPath;
         }
 
 
@@ -193,7 +202,7 @@ namespace iPhotoExtractor
 
                 for (int imageIndex = 0; imageIndex < masterImages.Count; imageIndex++)
                 {
-                    if (imageIndex % 500 == 0 || imageIndex == masterImages.Count - 1)
+                    if (imageIndex % 500 == 0)
                     {
                         Console.WriteLine(String.Format("Copying {0:0.0}% complete ({1:n0} of {2:n0})", imageIndex / (float)masterImages.Count * 100, imageIndex, masterImages.Count));
                     }

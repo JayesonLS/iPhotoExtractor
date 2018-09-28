@@ -116,11 +116,19 @@ namespace iPhotoExtractor
             destFolderPath = SanitizePathString(destFolderPath, true);
             string destPath = Path.Combine(destRootPath, destFolderPath, fileName);
 
-            Console.WriteLine("Copying to '" + Path.Combine(destFolderPath, fileName) + "'.");
+            // Console.WriteLine("Copying to '" + Path.Combine(destFolderPath, fileName) + "'.");
 
             if (!preview)
             {
-                File.Copy(sourcePath, destPath);
+                Directory.CreateDirectory(Path.GetDirectoryName(destPath));
+                if (File.Exists(destPath))
+                {
+                    Console.WriteLine("WARNING: File already exists, skipping '" + Path.Combine(destFolderPath, fileName) + "'.");
+                }
+                else
+                {
+                    File.Copy(sourcePath, destPath);
+                }
             }
         }
 
@@ -181,8 +189,17 @@ namespace iPhotoExtractor
 
                 MakeRollNamesUnique(albumData);
 
-                foreach (MasterImage masterImage in albumData.MasterImages.Values)
+                List<MasterImage> masterImages = albumData.MasterImages.Values.ToList();
+
+                for (int imageIndex = 0; imageIndex < masterImages.Count; imageIndex++)
                 {
+                    if (imageIndex % 500 == 0 || imageIndex == masterImages.Count - 1)
+                    {
+                        Console.WriteLine(String.Format("Copying {0:0.0}% complete ({1:n0} of {2:n0})", imageIndex / (float)masterImages.Count * 100, imageIndex, masterImages.Count));
+                    }
+
+                    MasterImage masterImage = masterImages[imageIndex];
+
                     Roll roll = albumData.Rolls[(int)masterImage.Roll];
                     string destPath = roll.RollName;
 

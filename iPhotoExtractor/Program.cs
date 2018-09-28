@@ -14,12 +14,13 @@ namespace iPhotoExtractor
         {
             Console.WriteLine("Copys images out iPhoto library");
             Console.WriteLine("Usage: iPhotoExtractor preview|copy [options] <iPhoto library path> <dest folder path>");
-            Console.WriteLine("Options: --unflaggedToExtrasFolders");
+            Console.WriteLine("Options: --unflaggedToExtrasFolders --copyOriginals");
         }
 
-        static bool GetOptions(ref string[] args, out bool unflaggedToExtras)
+        static bool GetOptions(ref string[] args, out bool unflaggedToExtras, out bool copyOriginals)
         {
             unflaggedToExtras = false;
+            copyOriginals = false;
 
             List<string> retainedArgs = new List<string>();
 
@@ -30,6 +31,10 @@ namespace iPhotoExtractor
                     if (arg == "--unflaggedToExtrasFolders")
                     {
                         unflaggedToExtras = true;
+                    }
+                    else if (arg == "--copyOriginals")
+                    {
+                        copyOriginals = true;
                     }
                     else
                     {
@@ -147,8 +152,9 @@ namespace iPhotoExtractor
             try
             {
                 bool unflaggedToExtras;
+                bool copyOriginals;
 
-                if (!GetOptions(ref args, out unflaggedToExtras))
+                if (!GetOptions(ref args, out unflaggedToExtras, out copyOriginals))
                 {
                     PrintUsage();
                     return;
@@ -217,11 +223,17 @@ namespace iPhotoExtractor
                         destPath = Path.Combine(destPath, "Extras");
                     }
 
-                    CopyFile(iPhotoLibraryPath, masterImage.ImagePath, outputFolderPath, destPath, preview);
-
-                    if (masterImage.OriginalPath != null && masterImage.OriginalPath != masterImage.ImagePath)
+                    string destFilePath = CopyFile(iPhotoLibraryPath, masterImage.ImagePath, outputFolderPath, destPath, preview);
+                    if (destFilePath != null)
                     {
-                        CopyFile(iPhotoLibraryPath, masterImage.OriginalPath, outputFolderPath, Path.Combine(destPath, "Originals"), preview);
+                        // Copy was successful.
+
+                        // TODO: Write metadata here.
+
+                        if (copyOriginals &&  masterImage.OriginalPath != null && masterImage.OriginalPath != masterImage.ImagePath)
+                        {
+                            CopyFile(iPhotoLibraryPath, masterImage.OriginalPath, outputFolderPath, Path.Combine(destPath, "Originals"), preview);
+                        }
                     }
                 }
 

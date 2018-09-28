@@ -10,6 +10,9 @@ namespace iPhotoExtractor
 {
     class Program
     {
+        static int numFilesCopied = 0;
+        static int numMetadataFilesCreated = 0;
+
         static void PrintUsage()
         {
             Console.WriteLine("Copys images out iPhoto library");
@@ -140,12 +143,16 @@ namespace iPhotoExtractor
                 else
                 {
                     File.Copy(sourcePath, destPath);
+                    numFilesCopied++;
                 }
+            }
+            else
+            {
+                numFilesCopied++;
             }
 
             return destPath;
         }
-
 
         static void Main(string[] args)
         {
@@ -237,8 +244,9 @@ namespace iPhotoExtractor
                     }
                 }
 
-                Console.WriteLine("Done");
+                Console.WriteLine(String.Format("Done. {0} files copied, {1} metadata files written.", numFilesCopied, numMetadataFilesCreated));
             }
+
             catch (Exception e)
             {
                 Console.Error.WriteLine("Caught exception: " + e.ToString());

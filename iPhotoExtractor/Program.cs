@@ -5,6 +5,8 @@ using System.Text;
 using System.Threading.Tasks;
 using System.IO;
 using iPhotoAlbumDataParser;
+using XmpCore;
+using XmpCore.Options;
 
 namespace iPhotoExtractor
 {
@@ -159,6 +161,58 @@ namespace iPhotoExtractor
             return destPath;
         }
 
+        private static void WriteXmpMetaData(string metaFilePath, AlbumData albumData, MasterImage masterImage, bool alwaysWriteMetadata, bool preview)
+        {
+            bool writeMetadata = false;
+
+            IXmpMeta xmp = XmpMetaFactory.Create();
+
+            string fileName = Path.GetFileNameWithoutExtension(metaFilePath);
+            if ((masterImage.Caption != fileName && !String.IsNullOrEmpty(masterImage.Caption)) || alwaysWriteMetadata)
+            {
+                xmp.AppendArrayItem(XmpConstants.NsDC, "dc:title", new PropertyOptions { IsArrayAlternate = true }, masterImage.Caption, null);
+                writeMetadata = true;
+            }
+
+            if (!String.IsNullOrEmpty(masterImage.Comment))
+            {
+                xmp.AppendArrayItem(XmpConstants.NsDC, "dc:description", new PropertyOptions { IsArrayAlternate = true }, masterImage.Comment, null);
+                writeMetadata = true;
+            }
+
+            if (masterImage.Rating != null && (int)masterImage.Rating > 0)
+            {
+                xmp.SetProperty(XmpConstants.NsXmp, "xmp:Rating", ((int)masterImage.Rating).ToString());
+                writeMetadata = true;
+            }
+
+            // TODO: Handle faces.
+
+            if (writeMetadata)
+            {
+                if (true)//!preview)
+                {
+                    Directory.CreateDirectory(Path.GetDirectoryName(metaFilePath));
+                    if (File.Exists(metaFilePath))
+                    {
+                        Console.WriteLine("WARNING: XMP meta file already exists, skipping '" + metaFilePath + "'.");
+                    }
+                    else
+                    {
+                        using (var stream = File.OpenWrite(metaFilePath))
+                        {
+                            XmpMetaFactory.Serialize(xmp, stream, new SerializeOptions { OmitPacketWrapper = true });
+                        }
+                        numMetadataFilesCreated++;
+                    }
+                }
+                else
+                {
+                    numMetadataFilesCreated++;
+                }
+            }
+        }
+
         static void Main(string[] args)
         {
             try
@@ -241,7 +295,8 @@ namespace iPhotoExtractor
                     {
                         // Copy was successful.
 
-                        // TODO: Write metadata here.
+                        string metaFilePath = Path.ChangeExtension(destFilePath, ".xmp");
+                        WriteXmpMetaData(metaFilePath, albumData, masterImage, alwaysWriteMetadata, preview);
 
                         if (copyOriginals &&  masterImage.OriginalPath != null && masterImage.OriginalPath != masterImage.ImagePath)
                         {

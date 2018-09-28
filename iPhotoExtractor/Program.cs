@@ -17,13 +17,14 @@ namespace iPhotoExtractor
         {
             Console.WriteLine("Copys images out iPhoto library");
             Console.WriteLine("Usage: iPhotoExtractor preview|copy [options] <iPhoto library path> <dest folder path>");
-            Console.WriteLine("Options: --unflaggedToExtrasFolders --copyOriginals");
+            Console.WriteLine("Options: --unflaggedToExtrasFolders --copyOriginals --alwaysWriteMetadata");
         }
 
-        static bool GetOptions(ref string[] args, out bool unflaggedToExtras, out bool copyOriginals)
+        static bool GetOptions(ref string[] args, out bool unflaggedToExtras, out bool copyOriginals, out bool alwaysWriteMetadata)
         {
             unflaggedToExtras = false;
             copyOriginals = false;
+            alwaysWriteMetadata = false;
 
             List<string> retainedArgs = new List<string>();
 
@@ -38,6 +39,10 @@ namespace iPhotoExtractor
                     else if (arg == "--copyOriginals")
                     {
                         copyOriginals = true;
+                    }
+                    else if (arg == "--alwaysWriteMetadata")
+                    {
+                        alwaysWriteMetadata = true;
                     }
                     else
                     {
@@ -160,8 +165,9 @@ namespace iPhotoExtractor
             {
                 bool unflaggedToExtras;
                 bool copyOriginals;
+                bool alwaysWriteMetadata;
 
-                if (!GetOptions(ref args, out unflaggedToExtras, out copyOriginals))
+                if (!GetOptions(ref args, out unflaggedToExtras, out copyOriginals, out alwaysWriteMetadata))
                 {
                     PrintUsage();
                     return;

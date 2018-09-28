@@ -50,7 +50,12 @@ namespace iPhotoAlbumDataParser
         {
             return new Face
             {
+                Key = XElementParser.ParseIntValue(xmlElement, "key"),
                 Name = XElementParser.ParseStringValue(xmlElement, "name"),
+                KeyImage = XElementParser.ParseStringValue(xmlElement, "key image"),
+                KeyImageFaceIndex = XElementParser.ParseNullableIntValue(xmlElement, "key image face index"),
+                PhotoCount = XElementParser.ParseNullableIntValue(xmlElement, "PhotoCount"),
+                Order = XElementParser.ParseNullableIntValue(xmlElement, "Order"),
             };
         }
 

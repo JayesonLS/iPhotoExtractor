@@ -7,22 +7,25 @@ using System.IO;
 using iPhotoAlbumDataParser;
 using XmpCore;
 using XmpCore.Options;
+using System.Text.RegularExpressions;
 
 namespace iPhotoExtractor
 {
     class Program
     {
-        static int numFilesCopied = 0;
-        static int numMetadataFilesCreated = 0;
+        int numFilesCopied = 0;
+        int numMetadataFilesCreated = 0;
+        Dictionary<string, HashSet<string>> uniqueFilenameTracking = new Dictionary<string, HashSet<string>>();
+        AlbumData albumData;
 
-        static void PrintUsage()
+        void PrintUsage()
         {
             Console.WriteLine("Copys images out iPhoto library");
             Console.WriteLine("Usage: iPhotoExtractor preview|copy [options] <iPhoto library path> <dest folder path>");
             Console.WriteLine("Options: --unflaggedToExtrasFolders --copyOriginals --alwaysWriteMetadata");
         }
 
-        static bool GetOptions(ref string[] args, out bool unflaggedToExtras, out bool copyOriginals, out bool alwaysWriteMetadata)
+        bool GetOptions(ref string[] args, out bool unflaggedToExtras, out bool copyOriginals, out bool alwaysWriteMetadata)
         {
             unflaggedToExtras = false;
             copyOriginals = false;
@@ -63,7 +66,7 @@ namespace iPhotoExtractor
             return true;
         }
 
-        static string CleanEventName(string name)
+        string CleanFileOrDirectoryName(string name)
         {
             name = name.Replace('/', '-');
 
@@ -75,7 +78,7 @@ namespace iPhotoExtractor
             return name;
         }
 
-        static void MakeRollNamesUnique(AlbumData albumData)
+        void MakeRollNamesUnique(AlbumData albumData)
         {
             HashSet<string> usedRollNames = new HashSet<string>();
 
@@ -88,7 +91,7 @@ namespace iPhotoExtractor
                 }
 
                 baseName = baseName.Replace('\\', '_');
-                baseName = CleanEventName(baseName);
+                baseName = CleanFileOrDirectoryName(baseName);
 
                 string name = baseName;
 
@@ -96,6 +99,7 @@ namespace iPhotoExtractor
                 {
                     name = baseName + " (" + i.ToString() + ")";
                 }
+                usedRollNames.Add(name);
 
                 if (name != roll.RollName)
                 {
@@ -106,30 +110,119 @@ namespace iPhotoExtractor
             }
         }
 
-        static string SanitizePathString(string pathString, bool allowSeparator)
+        bool IsEquivalent(string title, string fileNameOrPathWithExtension)
         {
-            foreach (char c in Path.GetInvalidFileNameChars())
-            {
-                if (allowSeparator && (c == Path.DirectorySeparatorChar || c == Path.AltDirectorySeparatorChar))
-                {
-                    continue;
-                }
+            string fileNameWithoutExtension = Path.GetFileNameWithoutExtension(fileNameOrPathWithExtension);
+            string fileNameExtension = Path.GetExtension(fileNameOrPathWithExtension);
 
-                string replacement = String.Format("%0:X2", (int)c);
-                pathString = pathString.Replace(c.ToString(), replacement);
+            title = title.Trim();
+
+            if (title == fileNameWithoutExtension)
+            {
+                return true;
             }
 
-            return pathString;
+            // Sometimes the image name ends in "_n" (number) versus the title with " copy". _n is a better approach.
+            while (title.EndsWith(" copy") && Regex.IsMatch(fileNameWithoutExtension, @"_\d+$"))
+            {
+                title = title.Substring(0, title.Length - " copy".Length);
+                fileNameWithoutExtension = fileNameWithoutExtension.Substring(0, fileNameWithoutExtension.LastIndexOf('_'));
+
+                if (title == fileNameWithoutExtension)
+                {
+                    return true;
+                }
+            }
+
+            // Sometimes the name is the file name with the extension. 
+            // We want to filter this out, don't want files named image.jpg.jpg for example.
+            int titleLastPeriodIndex = title.LastIndexOf('.');
+            if (titleLastPeriodIndex > 0)
+            {
+                string titleExtension = title.Substring(titleLastPeriodIndex);
+                if (!String.IsNullOrEmpty(titleExtension) &&
+                    titleExtension.ToLower() == fileNameExtension.ToLower())
+                {
+                    title = title.Substring(0, title.Length - titleExtension.Length);
+
+                    if (title == fileNameWithoutExtension)
+                    {
+                        return true;
+                    }
+                }
+            }
+
+            return false;
         }
 
-        static string CopyFile(string sourceRootPath, string sourceFilePath, string destRootPath, string destFolderPath, bool preview)
+        bool HasMatchingExtension(string title, string fileNameOrPathWithExtension)
         {
-            string sourcePath = Path.Combine(sourceRootPath, sourceFilePath);
+            title = title.Trim();
 
-            string fileName = Path.GetFileName(sourceFilePath);
-            fileName = SanitizePathString(fileName, false);
-            destFolderPath = SanitizePathString(destFolderPath, true);
-            string destPath = Path.Combine(destRootPath, destFolderPath, fileName);
+            int titleLastPeriodIndex = title.LastIndexOf('.');
+            if (titleLastPeriodIndex > 0)
+            {
+                string titleExtension = title.Substring(titleLastPeriodIndex);
+                if (!String.IsNullOrEmpty(titleExtension) &&
+                    titleExtension.ToLower() == Path.GetExtension(fileNameOrPathWithExtension).ToLower())
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        string GetUniqueFileNameForImage(string destRollPath, MasterImage masterImage)
+        {
+            string extension = Path.GetExtension(masterImage.ImagePath);
+            string imageFileName = Path.GetFileNameWithoutExtension(masterImage.ImagePath);
+            string desiredName = imageFileName;
+
+            if (!String.IsNullOrWhiteSpace(masterImage.Caption) && 
+                !IsEquivalent(masterImage.Caption, masterImage.ImagePath) &&
+                !HasMatchingExtension(masterImage.Caption, masterImage.ImagePath))
+            {
+                desiredName = masterImage.Caption.Trim();
+
+                int maxNameLen = Math.Max(40, imageFileName.Length);
+                if (desiredName.Length > maxNameLen)
+                {
+                    desiredName = desiredName.Substring(0, maxNameLen);
+                }
+            }
+
+            desiredName = CleanFileOrDirectoryName(desiredName);
+
+            // Make name unique.
+            HashSet<string> usedNames;
+            if (!uniqueFilenameTracking.TryGetValue(destRollPath, out usedNames))
+            {
+                usedNames = new HashSet<string>();
+                uniqueFilenameTracking[destRollPath] = usedNames;
+            }
+
+            string name = desiredName;
+
+            for (int i = 1; usedNames.Contains(name + extension); i++)
+            {
+                name = desiredName + " (" + i.ToString() + ")";
+            }
+            usedNames.Add(name + extension);
+
+            if (name != imageFileName)
+            {
+                Console.WriteLine("Modifed image name from '" + Path.Combine(destRollPath, imageFileName + extension) + "' to '" + Path.Combine(destRollPath, name + extension) + "'.");
+            }
+
+            return name + extension;
+        }
+
+        bool CopyFile(string sourceRootPath, string sourceFilePath, string destPath, bool preview)
+        {
+            bool success = false;
+
+            string sourcePath = Path.Combine(sourceRootPath, sourceFilePath);
 
             // Console.WriteLine("Copying to '" + Path.Combine(destFolderPath, fileName) + "'.");
 
@@ -138,37 +231,35 @@ namespace iPhotoExtractor
                 if (!File.Exists(sourcePath))
                 {
                     Console.Error.WriteLine("Can't find source file '" + sourcePath + "', skipping.");
-                    return null;
                 }
-
-                Directory.CreateDirectory(Path.GetDirectoryName(destPath));
-                if (File.Exists(destPath))
+                else if (File.Exists(destPath))
                 {
-                    Console.WriteLine("WARNING: Destination file already exists, skipping '" + Path.Combine(destFolderPath, fileName) + "'.");
-                    return null;
+                    Console.WriteLine("WARNING: Destination file already exists, skipping '" + destPath + "'.");
                 }
                 else
                 {
+                    Directory.CreateDirectory(Path.GetDirectoryName(destPath));
                     File.Copy(sourcePath, destPath);
                     numFilesCopied++;
+                    success = true;
                 }
             }
             else
             {
                 numFilesCopied++;
+                success = true;
             }
 
-            return destPath;
+            return success;
         }
-
-        private static void WriteXmpMetaData(string metaFilePath, AlbumData albumData, MasterImage masterImage, bool alwaysWriteMetadata, bool preview)
+        
+        private void WriteXmpMetaData(string imageFilePath, MasterImage masterImage, bool alwaysWriteMetadata, bool preview)
         {
             bool writeMetadata = false;
 
             IXmpMeta xmp = XmpMetaFactory.Create();
 
-            string fileName = Path.GetFileNameWithoutExtension(metaFilePath);
-            if ((masterImage.Caption != fileName && !String.IsNullOrEmpty(masterImage.Caption)) || alwaysWriteMetadata)
+            if ((!String.IsNullOrEmpty(masterImage.Caption) && !IsEquivalent(masterImage.Caption, imageFilePath)) || alwaysWriteMetadata)
             {
                 xmp.AppendArrayItem(XmpConstants.NsDC, "dc:title", new PropertyOptions { IsArrayAlternate = true }, masterImage.Caption, null);
                 writeMetadata = true;
@@ -190,7 +281,9 @@ namespace iPhotoExtractor
 
             if (writeMetadata)
             {
-                if (true)//!preview)
+                string metaFilePath = Path.ChangeExtension(imageFilePath, ".xmp");
+
+                if (!preview)
                 {
                     Directory.CreateDirectory(Path.GetDirectoryName(metaFilePath));
                     if (File.Exists(metaFilePath))
@@ -213,104 +306,110 @@ namespace iPhotoExtractor
             }
         }
 
+        public void Run(string[] args)
+        {
+            bool unflaggedToExtras;
+            bool copyOriginals;
+            bool alwaysWriteMetadata;
+
+            if (!GetOptions(ref args, out unflaggedToExtras, out copyOriginals, out alwaysWriteMetadata))
+            {
+                PrintUsage();
+                return;
+            }
+
+            if (args.Length != 3)
+            {
+                PrintUsage();
+                return;
+            }
+
+            string mode = args[0];
+            string iPhotoLibraryPath = args[1];
+            string outputFolderPath = args[2];
+
+            if (mode != "preview" && mode != "copy")
+            {
+                Console.Error.WriteLine("Invalid mode '" + mode + "'.");
+                PrintUsage();
+                return;
+            }
+
+            if (!Directory.Exists(iPhotoLibraryPath))
+            {
+                Console.Error.WriteLine("Can't find iphoto library folder '" + iPhotoLibraryPath + "'.");
+                PrintUsage();
+                return;
+            }
+
+            if (!Directory.Exists(outputFolderPath))
+            {
+                Console.Error.WriteLine("Can't find output folder'" + outputFolderPath + "'.");
+                PrintUsage();
+                return;
+            }
+
+            string iPhotoXmlPath = Path.Combine(iPhotoLibraryPath, "AlbumData.xml");
+            if (!File.Exists(iPhotoXmlPath))
+            {
+                Console.Error.WriteLine("Can't find iphoto ablum data XML '" + iPhotoXmlPath + "'.");
+                PrintUsage();
+                return;
+            }
+
+            bool preview = mode == "preview";
+            albumData = AlbumData.Load(iPhotoXmlPath);
+
+            MakeRollNamesUnique(albumData);
+
+            List<MasterImage> masterImages = albumData.MasterImages.Values.ToList();
+            for (int imageIndex = 0; imageIndex < masterImages.Count; imageIndex++)
+            {
+                if (imageIndex % 500 == 0)
+                {
+                    Console.WriteLine(String.Format("Copying {0:0.0}% complete ({1:n0} of {2:n0})", imageIndex / (float)masterImages.Count * 100, imageIndex, masterImages.Count));
+                }
+
+                MasterImage masterImage = masterImages[imageIndex];
+
+                Roll roll = albumData.Rolls[(int)masterImage.Roll];
+                string destRollPath = roll.RollName;
+
+                if (unflaggedToExtras && !masterImage.Flagged)
+                {
+                    destRollPath = Path.Combine(destRollPath, "Extras");
+                }
+
+                string destFileName = GetUniqueFileNameForImage(destRollPath, masterImage);
+                string destFilePath = Path.Combine(outputFolderPath, destRollPath, destFileName);
+
+                if (CopyFile(iPhotoLibraryPath, masterImage.ImagePath, destFilePath, preview))
+                {
+                    WriteXmpMetaData(destFilePath, masterImage, alwaysWriteMetadata, preview);
+
+                    if (copyOriginals && masterImage.OriginalPath != null && masterImage.OriginalPath != masterImage.ImagePath)
+                    {
+                        string originalDestFilePath = Path.Combine(Path.GetDirectoryName(destFilePath), "Originals", Path.GetFileNameWithoutExtension(destFilePath) + Path.GetExtension(masterImage.OriginalPath));
+                        CopyFile(iPhotoLibraryPath, masterImage.OriginalPath, originalDestFilePath, preview);
+                    }
+                }
+            }
+
+            Console.WriteLine(String.Format("Done. {0} files copied, {1} metadata files written.", numFilesCopied, numMetadataFilesCreated));
+        }
+
         static void Main(string[] args)
         {
             try
             {
-                bool unflaggedToExtras;
-                bool copyOriginals;
-                bool alwaysWriteMetadata;
-
-                if (!GetOptions(ref args, out unflaggedToExtras, out copyOriginals, out alwaysWriteMetadata))
-                {
-                    PrintUsage();
-                    return;
-                }
-
-                if (args.Length != 3)
-                {
-                    PrintUsage();
-                    return;
-                }
-
-                string mode = args[0];
-                string iPhotoLibraryPath = args[1];
-                string outputFolderPath = args[2];
-
-                if (mode != "preview" && mode != "copy")
-                {
-                    Console.Error.WriteLine("Invalid mode '" + mode + "'.");
-                    PrintUsage();
-                    return;
-                }
-
-                if (!Directory.Exists(iPhotoLibraryPath))
-                {
-                    Console.Error.WriteLine("Can't find iphoto library folder '" + iPhotoLibraryPath + "'.");
-                    PrintUsage();
-                    return;
-                }
-
-                if (!Directory.Exists(outputFolderPath))
-                {
-                    Console.Error.WriteLine("Can't find output folder'" + outputFolderPath + "'.");
-                    PrintUsage();
-                    return;
-                }
-
-                string iPhotoXmlPath = Path.Combine(iPhotoLibraryPath, "AlbumData.xml");
-                if (!File.Exists(iPhotoXmlPath))
-                {
-                    Console.Error.WriteLine("Can't find iphoto ablum data XML '" + iPhotoXmlPath + "'.");
-                    PrintUsage();
-                    return;
-                }
-
-                bool preview = mode == "preview";
-                AlbumData albumData = AlbumData.Load(iPhotoXmlPath);
-
-                MakeRollNamesUnique(albumData);
-
-                List<MasterImage> masterImages = albumData.MasterImages.Values.ToList();
-
-                for (int imageIndex = 0; imageIndex < masterImages.Count; imageIndex++)
-                {
-                    if (imageIndex % 500 == 0)
-                    {
-                        Console.WriteLine(String.Format("Copying {0:0.0}% complete ({1:n0} of {2:n0})", imageIndex / (float)masterImages.Count * 100, imageIndex, masterImages.Count));
-                    }
-
-                    MasterImage masterImage = masterImages[imageIndex];
-
-                    Roll roll = albumData.Rolls[(int)masterImage.Roll];
-                    string destPath = roll.RollName;
-
-                    if (unflaggedToExtras && !masterImage.Flagged)
-                    {
-                        destPath = Path.Combine(destPath, "Extras");
-                    }
-
-                    string destFilePath = CopyFile(iPhotoLibraryPath, masterImage.ImagePath, outputFolderPath, destPath, preview);
-                    if (destFilePath != null)
-                    {
-                        // Copy was successful.
-
-                        string metaFilePath = Path.ChangeExtension(destFilePath, ".xmp");
-                        WriteXmpMetaData(metaFilePath, albumData, masterImage, alwaysWriteMetadata, preview);
-
-                        if (copyOriginals &&  masterImage.OriginalPath != null && masterImage.OriginalPath != masterImage.ImagePath)
-                        {
-                            CopyFile(iPhotoLibraryPath, masterImage.OriginalPath, outputFolderPath, Path.Combine(destPath, "Originals"), preview);
-                        }
-                    }
-                }
-
-                Console.WriteLine(String.Format("Done. {0} files copied, {1} metadata files written.", numFilesCopied, numMetadataFilesCreated));
+                Program program = new Program();
+                program.Run(args);
             }
 
             catch (Exception e)
             {
                 Console.Error.WriteLine("Caught exception: " + e.ToString());
+                Console.Error.WriteLine(e.StackTrace);
             }
         }
     }

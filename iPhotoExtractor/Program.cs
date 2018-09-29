@@ -22,13 +22,14 @@ namespace iPhotoExtractor
         {
             Console.WriteLine("Copys images out iPhoto library");
             Console.WriteLine("Usage: iPhotoExtractor preview|copy [options] <iPhoto library path> <dest folder path>");
-            Console.WriteLine("Options: --unflaggedToExtrasFolders --copyOriginals --alwaysWriteMetadata --prependDateToEventNames");
+            Console.WriteLine("Options: --unflaggedToExtrasFolders --copyOriginals --writeMetadataFiles --alwaysWriteMetadata --prependDateToEventNames");
         }
 
-        bool GetOptions(ref string[] args, out bool unflaggedToExtras, out bool copyOriginals, out bool alwaysWriteMetadata, out bool prependDateToEventNames)
+        bool GetOptions(ref string[] args, out bool unflaggedToExtras, out bool copyOriginals, out bool writeMetadataFiles, out bool alwaysWriteMetadata, out bool prependDateToEventNames)
         {
             unflaggedToExtras = false;
             copyOriginals = false;
+            writeMetadataFiles = false;
             alwaysWriteMetadata = false;
             prependDateToEventNames = true;
 
@@ -45,6 +46,10 @@ namespace iPhotoExtractor
                     else if (arg == "--copyOriginals")
                     {
                         copyOriginals = true;
+                    }
+                    else if (arg == "--writeMetadataFiles")
+                    {
+                        writeMetadataFiles = true;
                     }
                     else if (arg == "--alwaysWriteMetadata")
                     {
@@ -249,7 +254,7 @@ namespace iPhotoExtractor
             {
                 desiredName = masterImage.Caption.Trim();
 
-                int maxNameLen = Math.Max(40, imageFileName.Length);
+                int maxNameLen = Math.Max(80, imageFileName.Length);
                 if (desiredName.Length > maxNameLen)
                 {
                     desiredName = desiredName.Substring(0, maxNameLen);
@@ -298,7 +303,7 @@ namespace iPhotoExtractor
                 }
                 else if (File.Exists(destPath))
                 {
-                    Console.WriteLine("WARNING: Destination file already exists, skipping '" + destPath + "'.");
+                    Console.Error.WriteLine("Destination file already exists, skipping '" + destPath + "'.");
                 }
                 else
                 {
@@ -352,7 +357,7 @@ namespace iPhotoExtractor
                     Directory.CreateDirectory(Path.GetDirectoryName(metaFilePath));
                     if (File.Exists(metaFilePath))
                     {
-                        Console.WriteLine("WARNING: XMP meta file already exists, skipping '" + metaFilePath + "'.");
+                        Console.Error.WriteLine("XMP meta file already exists, skipping '" + metaFilePath + "'.");
                     }
                     else
                     {
@@ -374,10 +379,11 @@ namespace iPhotoExtractor
         {
             bool unflaggedToExtras;
             bool copyOriginals;
+            bool writeMetadataFiles;
             bool alwaysWriteMetadata;
             bool prependDateToEventNames;
 
-            if (!GetOptions(ref args, out unflaggedToExtras, out copyOriginals, out alwaysWriteMetadata, out prependDateToEventNames))
+            if (!GetOptions(ref args, out unflaggedToExtras, out copyOriginals, out writeMetadataFiles, out alwaysWriteMetadata, out prependDateToEventNames))
             {
                 PrintUsage();
                 return;
@@ -457,7 +463,10 @@ namespace iPhotoExtractor
 
                 if (CopyFile(iPhotoLibraryPath, masterImage.ImagePath, destFilePath, preview))
                 {
-                    WriteXmpMetaData(destFilePath, masterImage, alwaysWriteMetadata, preview);
+                    if (writeMetadataFiles || alwaysWriteMetadata)
+                    {
+                        WriteXmpMetaData(destFilePath, masterImage, alwaysWriteMetadata, preview);
+                    }
 
                     if (copyOriginals && masterImage.OriginalPath != null && masterImage.OriginalPath != masterImage.ImagePath)
                     {

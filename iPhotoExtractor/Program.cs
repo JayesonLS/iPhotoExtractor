@@ -22,14 +22,15 @@ namespace iPhotoExtractor
         {
             Console.WriteLine("Copys images out iPhoto library");
             Console.WriteLine("Usage: iPhotoExtractor preview|copy [options] <iPhoto library path> <dest folder path>");
-            Console.WriteLine("Options: --unflaggedToExtrasFolders --copyOriginals --alwaysWriteMetadata");
+            Console.WriteLine("Options: --unflaggedToExtrasFolders --copyOriginals --alwaysWriteMetadata --prependDateToEventNames");
         }
 
-        bool GetOptions(ref string[] args, out bool unflaggedToExtras, out bool copyOriginals, out bool alwaysWriteMetadata)
+        bool GetOptions(ref string[] args, out bool unflaggedToExtras, out bool copyOriginals, out bool alwaysWriteMetadata, out bool prependDateToEventNames)
         {
             unflaggedToExtras = false;
             copyOriginals = false;
             alwaysWriteMetadata = false;
+            prependDateToEventNames = true;
 
             List<string> retainedArgs = new List<string>();
 
@@ -48,6 +49,10 @@ namespace iPhotoExtractor
                     else if (arg == "--alwaysWriteMetadata")
                     {
                         alwaysWriteMetadata = true;
+                    }
+                    else if (arg == "--prependDateToEventNames")
+                    {
+                        prependDateToEventNames = true;
                     }
                     else
                     {
@@ -78,7 +83,66 @@ namespace iPhotoExtractor
             return name;
         }
 
-        void MakeRollNamesUnique(AlbumData albumData)
+        void RemoveUnreferencedRolls()
+        {
+            HashSet<int> usedRollKeys = new HashSet<int>();
+
+            foreach (MasterImage masterImage in albumData.MasterImages.Values)
+            {
+                usedRollKeys.Add((int)masterImage.Roll);
+            }
+
+            foreach (int rollKey in albumData.Rolls.Keys.ToArray())
+            {
+                if (!usedRollKeys.Contains(rollKey))
+                {
+                    Roll roll = albumData.Rolls[rollKey];
+
+                    Console.WriteLine("Removing unreferenced event '" + roll.RollName + "'.");
+
+                    albumData.Rolls.Remove(rollKey);
+                }
+            }
+        }
+
+        void PrependDateToEventNames()
+        {
+            foreach (Roll roll in albumData.Rolls.Values)
+            {
+                double earliestDate = double.MaxValue; 
+
+                foreach (int imageKey in roll.KeyList)
+                {
+                    MasterImage masterImage;
+                    if (albumData.MasterImages.TryGetValue(imageKey, out masterImage))
+                    {
+                        if (masterImage.DateAsTimerInterval != null)
+                        {
+                            double imageDate = (double)masterImage.DateAsTimerInterval;
+
+                            if (imageDate != 0 && imageDate < earliestDate)
+                            {
+                                earliestDate = imageDate;
+                            }
+                        }
+                    }
+                }
+
+                if (earliestDate != double.MaxValue)
+                {
+                    long ticks = (long)(earliestDate * (double)TimeSpan.TicksPerSecond);
+                    TimeSpan timeSpan = new TimeSpan(ticks);
+                    DateTime date = new DateTime(2001, 1, 1);
+                    date = date.Add(timeSpan);
+
+                    string prefix = String.Format("{0:0000}-{1:00}-{2:00} ", date.Year, date.Month, date.Day);
+
+                    roll.RollName = prefix + roll.RollName;
+                }
+            }
+        }
+
+        void MakeRollNamesUnique()
         {
             HashSet<string> usedRollNames = new HashSet<string>();
 
@@ -311,8 +375,9 @@ namespace iPhotoExtractor
             bool unflaggedToExtras;
             bool copyOriginals;
             bool alwaysWriteMetadata;
+            bool prependDateToEventNames;
 
-            if (!GetOptions(ref args, out unflaggedToExtras, out copyOriginals, out alwaysWriteMetadata))
+            if (!GetOptions(ref args, out unflaggedToExtras, out copyOriginals, out alwaysWriteMetadata, out prependDateToEventNames))
             {
                 PrintUsage();
                 return;
@@ -360,7 +425,14 @@ namespace iPhotoExtractor
             bool preview = mode == "preview";
             albumData = AlbumData.Load(iPhotoXmlPath);
 
-            MakeRollNamesUnique(albumData);
+            RemoveUnreferencedRolls();
+
+            if (prependDateToEventNames)
+            {
+                PrependDateToEventNames();
+            }
+
+            MakeRollNamesUnique();
 
             List<MasterImage> masterImages = albumData.MasterImages.Values.ToList();
             for (int imageIndex = 0; imageIndex < masterImages.Count; imageIndex++)

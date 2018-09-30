@@ -314,9 +314,18 @@ namespace iPhotoExtractor
 
             if (!preview)
             {
-                Directory.CreateDirectory(Path.GetDirectoryName(destPath));
-                // File.WriteAllText(destPath, "Placeholder"); // For debugging output more quickly than a full copy.
-                File.Copy(sourcePath, destPath);
+                try
+                {
+                    Directory.CreateDirectory(Path.GetDirectoryName(destPath));
+                    // File.WriteAllText(destPath, "Placeholder"); // For debugging output more quickly than a full copy.
+                    File.Copy(sourcePath, destPath);
+                }
+
+                catch (Exception e)
+                {
+                    Console.Error.WriteLine("Caught exception copying file: " + e.ToString());
+                    Console.Error.WriteLine(e.StackTrace);
+                }
             }
 
             numFilesCopied++;

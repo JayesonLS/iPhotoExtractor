@@ -164,11 +164,11 @@ namespace iPhotoExtractor
 
                 string name = baseName;
 
-                for (int i = 1; usedRollNames.Contains(name); i++)
+                for (int i = 1; usedRollNames.Contains(name.ToLower()); i++)
                 {
                     name = baseName + " (" + i.ToString() + ")";
                 }
-                usedRollNames.Add(name);
+                usedRollNames.Add(name.ToLower());
 
                 if (name != roll.RollName)
                 {
@@ -265,23 +265,23 @@ namespace iPhotoExtractor
 
             // Make name unique.
             HashSet<string> usedNames;
-            if (!uniqueFilenameTracking.TryGetValue(destRollPath, out usedNames))
+            if (!uniqueFilenameTracking.TryGetValue(destRollPath.ToLower(), out usedNames))
             {
                 usedNames = new HashSet<string>();
-                uniqueFilenameTracking[destRollPath] = usedNames;
+                uniqueFilenameTracking[destRollPath.ToLower()] = usedNames;
             }
 
             string name = desiredName;
 
-            for (int i = 1; usedNames.Contains(name + extension); i++)
+            for (int i = 1; usedNames.Contains((name + extension).ToLower()); i++)
             {
                 name = desiredName + " (" + i.ToString() + ")";
             }
-            usedNames.Add(name + extension);
+            usedNames.Add((name + extension).ToLower());
 
             if (name != imageFileName)
             {
-                Console.WriteLine("Modifed image name from '" + Path.Combine(destRollPath, imageFileName + extension) + "' to '" + Path.Combine(destRollPath, name + extension) + "'.");
+                // Console.WriteLine("Modifed image name from '" + Path.Combine(destRollPath, imageFileName + extension) + "' to '" + Path.Combine(destRollPath, name + extension) + "'.");
             }
 
             return name + extension;
@@ -289,37 +289,39 @@ namespace iPhotoExtractor
 
         bool CopyFile(string sourceRootPath, string sourceFilePath, string destPath, bool preview)
         {
-            bool success = false;
-
             string sourcePath = Path.Combine(sourceRootPath, sourceFilePath);
 
             // Console.WriteLine("Copying to '" + Path.Combine(destFolderPath, fileName) + "'.");
 
-            if (!preview)
+            if (!File.Exists(sourcePath))
             {
+                // Try sanitizing the source file path. Mac allows characters that windows does not, like ":".
+                sourceFilePath = sourceFilePath.Replace(":", "_");
+                sourcePath = Path.Combine(sourceRootPath, sourceFilePath);
+
                 if (!File.Exists(sourcePath))
                 {
-                    Console.Error.WriteLine("Can't find source file '" + sourcePath + "', skipping.");
+                    Console.Error.WriteLine("ERROR: Can't find source file '" + sourcePath + "', skipping.");
+                    return false;
                 }
-                else if (File.Exists(destPath))
-                {
-                    Console.Error.WriteLine("Destination file already exists, skipping '" + destPath + "'.");
-                }
-                else
-                {
-                    Directory.CreateDirectory(Path.GetDirectoryName(destPath));
-                    File.Copy(sourcePath, destPath);
-                    numFilesCopied++;
-                    success = true;
-                }
-            }
-            else
-            {
-                numFilesCopied++;
-                success = true;
             }
 
-            return success;
+            if (File.Exists(destPath))
+            {
+                Console.Error.WriteLine("ERROR: Destination file already exists, skipping '" + destPath + "'.");
+                return false;
+            }
+
+            if (!preview)
+            {
+                Directory.CreateDirectory(Path.GetDirectoryName(destPath));
+                // File.WriteAllText(destPath, "Placeholder"); // For debugging output more quickly than a full copy.
+                File.Copy(sourcePath, destPath);
+            }
+
+            numFilesCopied++;
+
+            return true;
         }
         
         private void WriteXmpMetaData(string imageFilePath, MasterImage masterImage, bool alwaysWriteMetadata, bool preview)
@@ -352,24 +354,19 @@ namespace iPhotoExtractor
             {
                 string metaFilePath = Path.ChangeExtension(imageFilePath, ".xmp");
 
-                if (!preview)
+                if (File.Exists(metaFilePath))
+                {
+                    Console.Error.WriteLine("ERROR: XMP meta file already exists, skipping '" + metaFilePath + "'.");
+                }
+                else if (!preview)
                 {
                     Directory.CreateDirectory(Path.GetDirectoryName(metaFilePath));
-                    if (File.Exists(metaFilePath))
+
+                    using (var stream = File.OpenWrite(metaFilePath))
                     {
-                        Console.Error.WriteLine("XMP meta file already exists, skipping '" + metaFilePath + "'.");
+                        XmpMetaFactory.Serialize(xmp, stream, new SerializeOptions { OmitPacketWrapper = true });
                     }
-                    else
-                    {
-                        using (var stream = File.OpenWrite(metaFilePath))
-                        {
-                            XmpMetaFactory.Serialize(xmp, stream, new SerializeOptions { OmitPacketWrapper = true });
-                        }
-                        numMetadataFilesCreated++;
-                    }
-                }
-                else
-                {
+
                     numMetadataFilesCreated++;
                 }
             }

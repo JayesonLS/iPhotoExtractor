@@ -21,7 +21,7 @@ namespace iPhotoExtractor
 
         void PrintUsage()
         {
-            Console.WriteLine("Copies images out iPhoto library");
+            Console.WriteLine("Copies images out of iPhoto library");
             Console.WriteLine("Usage: iPhotoExtractor preview|copy [options] <iPhoto library path> <dest folder path>");
             Console.WriteLine("Options: --unflaggedToExtrasFolders");
             Console.WriteLine("         --copyOriginals");

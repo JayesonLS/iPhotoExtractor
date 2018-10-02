@@ -16,22 +16,29 @@ namespace iPhotoExtractor
         int numFilesCopied = 0;
         int numMetadataFilesCreated = 0;
         Dictionary<string, HashSet<string>> uniqueFilenameTracking = new Dictionary<string, HashSet<string>>();
+        Dictionary<string, string> sourceToDestMap = new Dictionary<string, string>();
         AlbumData albumData;
 
         void PrintUsage()
         {
             Console.WriteLine("Copies images out iPhoto library");
             Console.WriteLine("Usage: iPhotoExtractor preview|copy [options] <iPhoto library path> <dest folder path>");
-            Console.WriteLine("Options: --unflaggedToExtrasFolders --copyOriginals --writeMetadataFiles --alwaysWriteMetadata --prependDateToEventNames");
+            Console.WriteLine("Options: --unflaggedToExtrasFolders");
+            Console.WriteLine("         --copyOriginals");
+            Console.WriteLine("         --writeMetadataFiles");
+            Console.WriteLine("         --alwaysWriteMetadata");
+            Console.WriteLine("         --prependDateToEventNames");
+            Console.WriteLine("         --generateSynoCovers");
         }
 
-        bool GetOptions(ref string[] args, out bool unflaggedToExtras, out bool copyOriginals, out bool writeMetadataFiles, out bool alwaysWriteMetadata, out bool prependDateToEventNames)
+        bool GetOptions(ref string[] args, out bool unflaggedToExtras, out bool copyOriginals, out bool writeMetadataFiles, out bool alwaysWriteMetadata, out bool prependDateToEventNames, out bool generateSynoCovers)
         {
             unflaggedToExtras = false;
             copyOriginals = false;
             writeMetadataFiles = false;
             alwaysWriteMetadata = false;
-            prependDateToEventNames = true;
+            prependDateToEventNames = false;
+            generateSynoCovers = false;
 
             List<string> retainedArgs = new List<string>();
 
@@ -58,6 +65,10 @@ namespace iPhotoExtractor
                     else if (arg == "--prependDateToEventNames")
                     {
                         prependDateToEventNames = true;
+                    }
+                    else if (arg == "--generateSynoCovers")
+                    {
+                        generateSynoCovers = true;
                     }
                     else
                     {
@@ -312,6 +323,8 @@ namespace iPhotoExtractor
                 return false;
             }
 
+            sourceToDestMap[sourceFilePath] = destPath;
+
             if (!preview)
             {
                 try
@@ -381,6 +394,50 @@ namespace iPhotoExtractor
             }
         }
 
+        void GenerateSynoCover(Roll roll, string outputFolderPath, bool preview)
+        {
+            if (roll.KeyPhotoKey == null)
+            {
+                return;
+            }
+
+            string eventOutputFolder = Path.Combine(outputFolderPath, roll.RollName);
+            if (!Directory.Exists(eventOutputFolder))
+            {
+                Console.Error.WriteLine("Event folder '" + eventOutputFolder + "' is missing, skipping cover.");
+                return;
+            }
+
+            MasterImage masterImage;
+            if (!albumData.MasterImages.TryGetValue((int)roll.KeyPhotoKey, out masterImage))
+            {
+                return;
+            }
+
+            string keyImageOutputPath;
+            if (!sourceToDestMap.TryGetValue(masterImage.ImagePath, out keyImageOutputPath))
+            {
+                Console.Error.WriteLine("Could not find output file for key image '" + masterImage.ImagePath + "'.");
+                return;
+            }
+
+            string keyImageName = Path.GetFileName(keyImageOutputPath);
+
+            if (!File.Exists(Path.Combine(outputFolderPath, roll.RollName, keyImageName)))
+            {
+                Console.Error.WriteLine("Key image '" + Path.Combine(roll.RollName, keyImageName) + "' is missing, skipping cover.");
+                return;
+            }
+
+            string dotCoverDirectoryPath = Path.Combine(outputFolderPath, "@eaDir", roll.RollName);
+            string dotCoverFilePath = Path.Combine(dotCoverDirectoryPath, "SYNOPHOTO_ALBUM.cover");
+            if (!preview)
+            {
+                Directory.CreateDirectory(dotCoverDirectoryPath);
+                File.WriteAllText(dotCoverFilePath, keyImageName);
+            }
+        }
+
         public void Run(string[] args)
         {
             bool unflaggedToExtras;
@@ -388,8 +445,9 @@ namespace iPhotoExtractor
             bool writeMetadataFiles;
             bool alwaysWriteMetadata;
             bool prependDateToEventNames;
+            bool generateSynoCovers;
 
-            if (!GetOptions(ref args, out unflaggedToExtras, out copyOriginals, out writeMetadataFiles, out alwaysWriteMetadata, out prependDateToEventNames))
+            if (!GetOptions(ref args, out unflaggedToExtras, out copyOriginals, out writeMetadataFiles, out alwaysWriteMetadata, out prependDateToEventNames, out generateSynoCovers))
             {
                 PrintUsage();
                 return;
@@ -479,6 +537,17 @@ namespace iPhotoExtractor
                         string originalDestFilePath = Path.Combine(Path.GetDirectoryName(destFilePath), "Originals", Path.GetFileNameWithoutExtension(destFilePath) + Path.GetExtension(masterImage.OriginalPath));
                         CopyFile(iPhotoLibraryPath, masterImage.OriginalPath, originalDestFilePath, preview);
                     }
+                }
+            }
+
+            if (generateSynoCovers)
+            {
+                // Caution using this, it is not complete/robust.
+                Console.WriteLine("Generating covers for Synology Photo Station.");
+
+                foreach (Roll roll in albumData.Rolls.Values)
+                {
+                    GenerateSynoCover(roll, outputFolderPath, preview);
                 }
             }
 

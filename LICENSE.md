@@ -2,6 +2,9 @@ XElementParser.cs is based on the file of the same name from
 https://github.com/asciamanna/iTunesLibraryParser which us under the
 MIT license. 
 
+The referenced package XmpCore is under the BSD license.
+https://github.com/drewnoakes/xmp-core-dotnet
+
 For the rest, this is free and unencumbered software released 
 into the public domain.
 
